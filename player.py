@@ -6,7 +6,7 @@ class MusicNote:
     """表示单个音乐音符"""
     NOTE_TO_SEMITONE = {
         '1': 0, '2': 2, '3': 4, '4': 5, 
-        '5': 7, '6': 9, '7': 11,'0':-240
+        '5': 7, '6': 9, '7': 11, '0': -240
     }
     
     def __init__(self, base_freq=261.63, base_beat_duration=0.5):
@@ -81,6 +81,7 @@ class MusicPlayer:
         self.sample_rate = sample_rate
         self.audio = pyaudio.PyAudio()
         self.stream = None
+        self.harmonic_amplitudes = [1.0]  # 默认只使用基频
     
     def open_stream(self):
         """打开音频流"""
@@ -110,29 +111,44 @@ class MusicPlayer:
         """设置基准频率"""
         self.note_parser.base_freq = base_freq
     
+    def set_bpm(self, bpm):
+        """通过BPM设置标准拍长"""
+        self.note_parser.base_beat_duration = 60.0 / bpm
+
     def set_base_beat_duration(self, duration):
         """设置标准拍长(四分音符的时长)"""
         self.note_parser.base_beat_duration = duration
     
-    def set_bpm(self, bpm):
-        """通过BPM设置标准拍长"""
-        self.note_parser.base_beat_duration = 60.0 / bpm
+    def set_harmonic_amplitudes(self, amplitudes):
+        """设置泛音列的振幅系数"""
+        self.harmonic_amplitudes = amplitudes
     
     def generate_tone(self, frequency, duration):
-        """生成正弦波音频数据"""
+        """生成复合波形音频数据，基于泛音列振幅数组"""
         t = np.linspace(0, duration, int(self.sample_rate * duration), endpoint=False)
-        tone = np.sin(2 * np.pi * frequency * t)
+        
+        # 初始化复合波形
+        composite_tone = np.zeros_like(t)
+        
+        # 生成基频和各次谐波
+        for i, amplitude in enumerate(self.harmonic_amplitudes):
+            harmonic_freq = frequency * (i + 1)  # 第i个谐波的频率是基频的i+1倍
+            composite_tone += amplitude * np.sin(2 * np.pi * harmonic_freq * t)
+        
+        # 归一化处理，防止溢出
+        if np.max(np.abs(composite_tone)) > 0:
+            composite_tone /= np.max(np.abs(composite_tone))
         
         # 添加淡入淡出减少爆音
         fade_ms = 50
         fade_samples = int(self.sample_rate * fade_ms / 1000)
-        if fade_samples < len(tone):
+        if fade_samples < len(composite_tone):
             # 淡入
-            tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
+            composite_tone[:fade_samples] *= np.linspace(0, 1, fade_samples)
             # 淡出
-            tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+            composite_tone[-fade_samples:] *= np.linspace(1, 0, fade_samples)
         
-        return tone.astype(np.float32)
+        return composite_tone.astype(np.float32)
     
     def play_note(self, note_str):
         """播放单个音符"""
@@ -154,10 +170,11 @@ class MusicPlayer:
             self.play_note(note_str)
 
 if __name__ == "__main__":
-    player = MusicPlayer(base_freq=261.63, base_beat_duration=0.2)
-    player.set_bpm(97*4)  # 设置120BPM
+    player = MusicPlayer(base_freq=261.63)
+    player.set_bpm(388)  # 设置120BPM
     
-    spring_shadow_notes = [
+    
+spring_shadow_notes = [
         "3.+1","2.+2","1.+1","2.+2","3.+2","4.+4","3.+2","2.+1","3.+1","2.+2","1.+1","2.+2","3.+2","4.+4","3.+2","2.+1",
         "3.+1","2.+2","1.+1","2.+2","3.+2","4.+4","3.+2","2.+1","3.+1","2.+2","1.+1","2.+2","3.+2","4.+4","3.+2","2.+1","1.04","1.04",
         "3.02","3.02","2.02","4.02","3.02","2.02","2.02","2.02","1.04","1.04","4.02","3.02","2.02","2.01","1.04","2.04","3.01","0.01","3.02","5.02","1.+2",
@@ -184,13 +201,11 @@ if __name__ == "__main__":
         '5.02', '3.+2', '2.+2', '2.+1', '2.+4', '2.+4', '2.+2', '5.04', '5.04', '2.+1', '1.+2', '1.+1', '1.+2', '1.+2', '1.+2', '1.+4', '1.+4', '2.+2', '1.+2', '2.+4', '2.+4', '1.+1',
         '0.01', '2.+2', '2.+4', '1.+4', '2.+2', '2.+2', '3.+2', '2.+2', '3.01', '4.02', '3.+1', '0.01', '0.01', '0.01',
         '5.+2', '5.+2', '5.+2', '5.+2', '3.+2', '2.+2', '1.+2', '7.02', '7.02', '7.02', '3.+1', '2.+2', '2.+2', '1.+2', '5.02', '6.01', '0.01',
-        '0.01', '7.02', '7.02', '7.02', '1.+2', '7.02', '5.04', '5.02', '2.02', '3.02', '3.04', '2.04', '3.04', '2.04', '3.04', '4.04', '5.01', '4.04', '5.04', '6.01', '6.04', '7.04', '1.+1', '2.+4', '1.+4',
+        '0.01', '7.02', '7.02', '7.02', '1.+2', '7.02', '5.04', '5.02', '2.02', '3.02', '3.04', '2.04', '3.04', '2.04', '3.04', '4.04', '5.01', '4.04', '5.04', '6.01', '6.04', '7.04', '1.+1', '2.+4', '1.+4'
         '5.01', '5.02', '4.02', '4.02', '3.01', '4.04', '3.04', '5.01', '3.04', '2.04', '3.04', '2.04', '3.02', '5.01', '4.04', '5.04', '6.01', '0.04', '6.04', '7.01', '0.04', '3.04',
         '3.+2', '3.+2', '3.+4', '4.+2', '3.+2', '2.+2', '2.+1', '1.+4', '7.04', '1.+1', '5.04', '1.+4', '2.+1', '1.+2', '1.+1', '5.02', '2.+1', '1.+2', '1.+1', '5.04', '1.+4'
         '2.+2', '1.+2', '1.+2', '1.+1', '5.04', '1.+4', '2.+2', '3.+4', '2.+2', '1.+1', '1.+2', '7.02', '6.02', '6.02', '6.01', '5.02', '5.01', '4.02', '4.02', '3.02', '2.02', '3.01',
         '3.02', '4.02', '3.02', '4.02', '3.02', '2.02', '1.01', '4.02', '4.01', '5.01', '1.+2', '1.+1', '1.+2', '2.+2', '1.+2', '2.+2',
         '1.+1', '2.+2', '1.+1', '2.+2', '3.+2', '4.+4', '3.+2', '2.+1', '3.+1', '2.+2', '1.+1', '2.+2', '3.+2', '4.+4', '3.+2', '2.+1'
         ]
-    print("开始播放《春日影》...")
-    player.play_sequence(spring_shadow_notes)
-    print("播放完成！")
+# player.play_sequence(spring_shadow_notes)
