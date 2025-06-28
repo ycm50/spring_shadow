@@ -2,6 +2,8 @@ import wave
 import math
 import struct
 import numpy as np
+import argparse  # 新增：导入argparse模块
+import os  # 新增：导入os模块处理文件路径
 from player import MusicNote, MusicPlayer  # 修改导入语句
 
 def rcp_to_wav(input_file, output_file, sample_rate=44100, harmonic_amplitudes=[1.0]):  # 添加音色参数
@@ -50,13 +52,28 @@ def rcp_to_wav(input_file, output_file, sample_rate=44100, harmonic_amplitudes=[
         wav_file.writeframes(audio_data)
 
 if __name__ == '__main__':
-    # 示例：设置不同的音色（泛音振幅）
-    # 钢琴音色示例
-    piano_timbre = [1.0, 0.5, 0.3, 0.2, 0.1, 0.05]
-    # 小提琴音色示例
-    violin_timbre = [1.0, 0.7, 0.5, 0.3, 0.2, 0.15, 0.1]
+    # 定义支持的音色库
+    TIMBRES = {
+        'piano': [1.0, 0.5, 0.3, 0.2, 0.1, 0.05],        # 钢琴音色
+        'violin': [1.0, 0.7, 0.5, 0.3, 0.2, 0.15, 0.1],  # 小提琴音色
+        'flute': [1.0, 0.2, 0.1, 0.05]                   # 长笛音色（新增示例）
+    }
     
-    # 使用钢琴音色保存
-    rcp_to_wav('1.rcp', 'output_piano.wav', harmonic_amplitudes=piano_timbre)
-    # 或者使用小提琴音色
-    # rcp_to_wav('1.rcp', 'output_violin.wav', harmonic_amplitudes=violin_timbre)
+    # 设置命令行参数解析器
+    parser = argparse.ArgumentParser(description='将RCP乐谱文件转换为WAV音频文件')
+    parser.add_argument('input_file', nargs='?', default='1.rcp', 
+                        help='输入的RCP文件路径（默认：1.rcp）')
+    parser.add_argument('--timbre', choices=TIMBRES.keys(), default='piano', 
+                        help=f'选择音色（默认：piano，支持：{list(TIMBRES.keys())}）')
+    
+    # 解析命令行参数
+    args = parser.parse_args()
+    
+    # 生成输出文件名（基于输入文件名和音色）
+    input_basename = os.path.splitext(os.path.basename(args.input_file))[0]
+    output_file = f'output_{input_basename}_{args.timbre}.wav'
+    
+    # 执行转换
+    print(f'正在转换：{args.input_file}，音色：{args.timbre}')
+    rcp_to_wav(args.input_file, output_file, harmonic_amplitudes=TIMBRES[args.timbre])
+    print(f'转换完成，输出文件：{output_file}')
